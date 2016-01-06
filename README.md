@@ -30,7 +30,7 @@
   * [系统架构](discretized-streams/system-architecture.md)
   * [错误恢复](discretized-streams/fault-and-straggler-recovery.md)
   * [评价](discretized-streams/evaluation.md)
-* [rdd概论](generality-of-rdds/introduction.md)
+* [rdd通用性](generality-of-rdds/introduction.md)
   * [介绍](generality-of-rdds/introduction.md)
   * [表达视角](generality-of-rdds/expressiveness-perspective.md)
   * [系统视角](generality-of-rdds/systems-perspective.md)
