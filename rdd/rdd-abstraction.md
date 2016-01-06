@@ -28,9 +28,7 @@
 假设一个`web`服务遇到错误，而操作员想要在`Hadoop`文件系统（`HDFS`【11】）中搜索万亿字节的日志来找到原因。借助`Spark`，操作员可以跨一组节点就把错误信息从日志中加载到内存中，
 且交互地进行查询。可以先键入以下的`Scala`代码：
  
-lines = spark.textFile("hdfs://...")
-errors = lines.filter(_.startsWith("ERROR"))
-errors.persist()
+![code2.2.1](../images/code2.2.1.png)
 
 第一行定义了由一个`HDFS`文件（作为一个行文本集）返回的`RDD`，而第二行则由它衍生了一个过滤的`RDD`。然后第三行要求错误持久存储在内存中，从而可以在查询之间共享。
 请注意，过滤的参数是一个`Scala`闭包的语法。
@@ -44,14 +42,7 @@ errors.count()
 
 用户也可以在`RDD`执行进一步的转换，并使用他们的结果，如下面几行：
 
-// Count errors mentioning MySQL:
-errors.filter(_.contains("MySQL")).count()
-// Return the time fields of errors mentioning HDFS as an array, assuming
-// time is field number 3 in a tab-separated format:
-errors.filter(_.contains("HDFS"))
-.map(_.split('\t')(3))
-.collect()
-
+![code2.2.2](../images/code2.2.2.png)
 
 
 
