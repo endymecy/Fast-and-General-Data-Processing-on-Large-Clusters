@@ -156,6 +156,55 @@ for (i <- 1 to ITERATIONS) {
 首先，我们定义了一个持久化的`RDD`称之为 `points` ，它是通过对文本文件做`map` 转换（对每一行文本解析得到一个`Point` 对象）得到的结果。然后我们在每一步都重复的
 对`points`执行`map` 操作和`reduce` 操作来计算梯度，梯度是对当前`w` 的函数求和得到。如 2.6.1.节所述，在每一步迭代中将`points`缓存在内存中能够获得 20 多倍的速度提升。
 
+# `PageRank`
+在`PageRank`【21】中有一个比较复杂的数据共享模式。该算法通过对链接到该文档的其它文档的贡献值求和而迭代地对每个文档更新`rank`值。在每次迭代中，每个文档发送一个贡献值
+`r/n`到其邻近结点，其中`r`表示它的的`rank` ，`n` 为其相邻节点数。然后文档更新其`rank` 值为：`α/N + (1 —α) Σci`,这里的求和是对接收到的所有贡献值求和，
+`N `表示总的文档数，`a`是一个调优参数。我们用`Spark` 实现的`PageRank`的代码如下：
+
+```scala
+// Load graph as an RDD of (URL, outlinks) pairs
+val links = spark.textFile(...).map(...).persist()
+var ranks = // RDD of (URL, rank) pairs
+for (i <- 1 to ITERATIONS) {
+　　// Build an RDD of (targetURL, float) pairs with contributions sent by each page
+　　val contribs = links.join(ranks).flatMap {
+　　　case (url, (links, rank)) =>
+　　　　links.map(dest => (dest, rank/links.size))
+　　}
+　　// Sum contributions by URL and get new ranks
+　　ranks = contribs.reduceByKey((x,y) => x+y).mapValues(sum => a/N + (1-a)*sum)
+}
+```
+
+![2.3](../images/2.3.png "2.3")
+图2.3　`PageRank`中数据集的`Lineage`图
+
+该程序生成的`RDD lineage`如上图 2.3 所示。在每一步迭代中，我们基于`contribs`和上一步迭代的`ranks`，以及静态的`links`数据集建立了一个新的`ranks`数据集。
+本图的一个有趣特点是它会随着迭代次数而变长。因此，在一个有多次迭代的作业中，可能需要去可靠地复制 `ranks` 的某些版本以来缩短故障恢复的时间【66】。
+用户能够调用一个`RELIABLE`标识的`persist`接口来做到这点。然而，需要注意`links`数据集不需要复制，因为它的分区可以通过对输入文件块的重新执行`map`操作来
+重建。`links`数据集通常比`ranks`大很多，因为每个文档有很多链接，但是只有一个数值作为它的`rank`，因此使用`lineage`来恢复它会比对程序的内存状态做`checkpoint`的
+那些系统更节省时间。
+
+最后，通过控制`RDD`的分区策略，我们能够优化`PageRank` 的通信。如果我们指定了`links`的一种分区策略（比如，通过所有节点上的`URL`对`link`列表进行`hash` 分区），
+我们可以对`ranks`用同样的方式分区，保证`links`和`ranks` 之间的`join` 操作不需要通信（因为每个`URL`的`link`和`rank` 列表将在同一机器上）。我们也能够写一个自定义的
+ `Partitioner` 类将相互链接的页面分在一组(比如，根据域名对`URL`进行分区)。这两种优化都能在我们定义`links`时调用`partitionBy` 来实现：
+ 
+```scala
+ links = spark.textFile(...).map(...)
+ 　　　.partitionBy(myPartFunc).persist()
+```
+
+在这个初始调用之后，`links`和`ranks` 的`join` 操作将自动将每个`URL`的贡献值聚合到`link` 列所在的机器上，计算新的`rank`值并和它的`links`做`join` 操作。
+这种迭代间的一致性分区策略是一些特定框架的主要优化方法，例如`Pregel` 。`RDDs` 允许用户直接实现这个目标。
+
+|操作|含义|
+|---|:---|
+|partitions()|返回分区对象列表|
+|preferredLocations(p)|根据数据的本地特性，列出 能够快速访问分区 p的节点。|
+|dependencies() |返回依赖列表|
+|iterator(p, parentlters) | 给定 p 的父分区的迭代，计算分区 p 的元素|
+|partitioner()|返回能够说明 RDD 是hash 或 range 分区的元数据|
+表 2.3 　Spark 中用于表示`RDDs` 的接口
 
 
 
